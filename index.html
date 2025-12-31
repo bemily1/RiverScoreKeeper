@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>River Scorekeeper (Auto-Save)</title>
+    <title>River Scorekeeper (Round Scores)</title>
     <style>
         :root {
             --primary: #2563eb;
@@ -187,11 +187,10 @@
         let rounds = [];  
         let editingIndex = -1; 
         const TOTAL_ROUNDS = 13;
-        const SAVE_KEY = 'river_game_data_v1';
+        const SAVE_KEY = 'river_game_data_v2'; // Updated key version
 
         // --- INITIALIZATION ---
         window.onload = function() {
-            // Check for saved game
             const saved = localStorage.getItem(SAVE_KEY);
             if(saved) {
                 try {
@@ -199,12 +198,9 @@
                     if(data.players && data.players.length > 0) {
                         players = data.players;
                         rounds = data.rounds;
-                        // Auto-start
                         resumeGame();
                     }
-                } catch(e) {
-                    console.error("Save file corrupted");
-                }
+                } catch(e) { console.error("Save file corrupted"); }
             }
         };
 
@@ -228,9 +224,17 @@
 
         // --- HELPER: CARD COUNTER ---
         function getCardsForRound(r) {
-            // Sequence: 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1
             if (r <= 7) return r;
             return 14 - r;
+        }
+
+        // --- HELPER: ROUND SCORE CALC ---
+        function calculateHandPoints(bid, got) {
+            bid = parseInt(bid);
+            got = parseInt(got);
+            if (bid === got) return (bid * 10) + 10;
+            if (got < bid) return -(bid * 10);
+            return (bid * 10) + (got - bid); // Over
         }
 
         // --- SETUP LOGIC ---
@@ -244,7 +248,7 @@
             input.value = '';
             input.focus();
             renderPlayerList();
-            persistData(); // Save on player add
+            persistData();
         }
 
         function renderPlayerList() {
@@ -268,21 +272,19 @@
                 players.forEach(p => {
                     const entry = round.entries[p.id];
                     if(!entry) return;
-
+                    
                     const bid = parseInt(entry.bid);
                     const got = parseInt(entry.got);
                     let s = scores[p.id];
+                    
+                    // Add hand points
+                    const pts = calculateHandPoints(bid, got);
+                    s.score += pts;
 
-                    if(bid === got) {
-                        s.score += (bid * 10) + 10;
-                    } else if(got < bid) {
-                        s.score -= (bid * 10);
-                    } else {
-                        const extra = got - bid;
-                        s.score += (bid * 10) + extra;
-                        s.bags += extra;
-                    }
+                    // Handle Bags
+                    if(got > bid) s.bags += (got - bid);
 
+                    // Handle Penalty
                     while(s.bags >= 10) {
                         s.score -= 100;
                         s.bags -= 10;
@@ -328,10 +330,21 @@
                         <span style="font-weight:bold; color:#2563eb;">Round ${r.roundNum} <span style="font-weight:normal; color:#94a3b8; font-size:0.9em;">(${getCardsForRound(r.roundNum)} cards)</span></span>
                         <button class="edit-btn" onclick="editRound(${idx})">Edit</button>
                     </div>
-                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 8px;">
                         ${players.map(p => {
                             const e = r.entries[p.id];
-                            return `<div style="font-size:0.9em; color:#334155;">${p.name}: <b>${e.bid}/${e.got}</b></div>`;
+                            const pts = calculateHandPoints(e.bid, e.got);
+                            const sign = pts > 0 ? '+' : '';
+                            const color = pts >= 0 ? '#16a34a' : '#dc2626';
+                            
+                            return `
+                            <div style="font-size:0.95em; color:#334155; display:flex; justify-content:space-between; align-items:center; background:#f8fafc; padding:4px 8px; border-radius:6px;">
+                                <span>${p.name}</span>
+                                <div>
+                                    <b>${e.bid}/${e.got}</b>
+                                    <span style="color:${color}; font-weight:bold; font-size:0.9em; margin-left:6px;">(${sign}${pts})</span>
+                                </div>
+                            </div>`;
                         }).join('')}
                     </div>
                 </div>
@@ -391,7 +404,7 @@
 
             closeModal();
             recalculateAll();
-            persistData(); // Save on round update
+            persistData();
         }
 
         function deleteRound() {
@@ -400,7 +413,7 @@
                 rounds.forEach((r, i) => r.roundNum = i + 1);
                 closeModal();
                 recalculateAll();
-                persistData(); // Save on delete
+                persistData();
             }
         }
 
