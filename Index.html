@@ -1,0 +1,385 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>River Scorekeeper (1-7-1)</title>
+    <style>
+        :root {
+            --primary: #2563eb;
+            --bg: #f8fafc;
+            --card: #ffffff;
+            --text: #0f172a;
+            --danger: #dc2626;
+            --success: #16a34a;
+            --border: #e2e8f0;
+            --warning-bg: #fef3c7;
+            --warning-text: #b45309;
+        }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: var(--bg);
+            color: var(--text);
+            margin: 0;
+            padding: 15px;
+            padding-bottom: 100px;
+        }
+
+        h1, h2, h3 { text-align: center; margin: 0 0 10px 0; }
+        
+        /* Cards & Layout */
+        .card {
+            background: var(--card);
+            border-radius: 12px;
+            padding: 15px;
+            box-shadow: 0 1px 2px rgba(0,0,0,0.05);
+            margin-bottom: 15px;
+            border: 1px solid var(--border);
+        }
+
+        .flex-row { display: flex; gap: 10px; align-items: center; }
+        .hidden { display: none !important; }
+
+        /* Buttons */
+        .btn {
+            background: var(--primary);
+            color: white;
+            border: none;
+            padding: 14px;
+            border-radius: 8px;
+            font-weight: 600;
+            font-size: 16px;
+            width: 100%;
+            cursor: pointer;
+            touch-action: manipulation;
+        }
+        .btn.secondary { background: #64748b; }
+        .btn.sm { padding: 8px 16px; font-size: 14px; width: auto; }
+        .edit-btn { background: none; border: 1px solid #cbd5e1; color: #64748b; padding: 4px 10px; border-radius: 4px; }
+
+        /* Inputs */
+        input {
+            width: 100%; padding: 12px; border: 1px solid #cbd5e1;
+            border-radius: 8px; font-size: 16px; box-sizing: border-box;
+        }
+
+        /* Leaderboard */
+        .lb-table { width: 100%; border-collapse: collapse; }
+        .lb-table td { padding: 12px 5px; border-bottom: 1px solid var(--border); }
+        .lb-table th { text-align: left; font-size: 0.8em; color: #64748b; text-transform: uppercase; }
+        
+        .score { font-weight: bold; font-size: 1.1em; }
+        .score.neg { color: var(--danger); }
+        
+        /* Bags Badge */
+        .bag-badge {
+            font-size: 0.85em; padding: 3px 8px; border-radius: 12px;
+            background: #f1f5f9; color: #64748b; white-space: nowrap; font-weight: 500;
+        }
+        .bag-badge.danger { background: #fee2e2; color: var(--danger); font-weight: bold; }
+
+        /* Game Header Info */
+        .game-status {
+            display: flex; justify-content: space-between; align-items: center;
+            margin-bottom: 15px;
+        }
+        .deal-badge {
+            background: var(--warning-bg); color: var(--warning-text);
+            padding: 5px 12px; border-radius: 20px; font-weight: bold; font-size: 0.9em;
+            border: 1px solid rgba(0,0,0,0.05);
+        }
+
+        /* Modal */
+        .modal-overlay {
+            position: fixed; top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(0,0,0,0.5); z-index: 100;
+            backdrop-filter: blur(2px);
+            display: flex; align-items: center; justify-content: center;
+        }
+        .modal-content {
+            background: var(--bg); width: 100%; height: 100%;
+            overflow-y: auto; padding: 20px; box-sizing: border-box;
+        }
+
+        .input-grid {
+            display: grid; grid-template-columns: 1.6fr 1fr 1fr; gap: 10px;
+            margin-bottom: 12px; align-items: center;
+        }
+        .col-head { font-size: 0.8em; font-weight: bold; color: #64748b; text-align: center; }
+
+        .footer {
+            position: fixed; bottom: 0; left: 0; right: 0;
+            background: white; padding: 15px; border-top: 1px solid var(--border);
+            z-index: 50;
+            box-shadow: 0 -4px 10px rgba(0,0,0,0.05);
+        }
+    </style>
+</head>
+<body>
+
+    <div id="view-setup" class="card" style="margin-top: 20px;">
+        <h2>River Setup</h2>
+        <p style="text-align:center; color:#64748b; margin-bottom:20px;">13 Rounds • 1-7-1 Sequence</p>
+        
+        <div class="flex-row">
+            <input type="text" id="newPlayer" placeholder="Enter name" onkeypress="handleEnter(event)">
+            <button class="btn sm" onclick="addPlayer()">Add</button>
+        </div>
+        <div id="playerList" style="margin: 15px 0; color: #64748b; min-height: 20px;">No players yet</div>
+        <button class="btn" onclick="startGame()">Start Game</button>
+    </div>
+
+    <div id="view-game" class="hidden">
+        
+        <div class="game-status">
+            <h2 id="round-display" style="margin:0; font-size:1.3em;">Round 1</h2>
+            <div id="cards-display" class="deal-badge">Deal 1 Card</div>
+        </div>
+
+        <div class="card">
+            <table class="lb-table">
+                <thead>
+                    <tr>
+                        <th width="40%">Player</th>
+                        <th width="30%" style="text-align:right">Score</th>
+                        <th width="30%" style="text-align:right">Bags</th>
+                    </tr>
+                </thead>
+                <tbody id="lb-body"></tbody>
+            </table>
+        </div>
+
+        <h3 style="margin-top:20px; color:#64748b; font-size:1em;">Round History</h3>
+        <div id="history-list" style="margin-bottom: 80px;"></div>
+
+        <div class="footer">
+            <button class="btn" id="next-round-btn" onclick="openModal()">+ Enter Round Results</button>
+        </div>
+    </div>
+
+    <div id="modal" class="hidden modal-overlay">
+        <div class="modal-content">
+            <h2 id="modal-title">Round Input</h2>
+            <div id="modal-deal-info" style="text-align:center; color: #64748b; margin-bottom: 20px; font-weight: bold;"></div>
+            
+            <div class="card">
+                <div class="input-grid">
+                    <div></div>
+                    <div class="col-head">BET</div>
+                    <div class="col-head">GOT</div>
+                </div>
+                <div id="modal-inputs"></div>
+            </div>
+
+            <button class="btn" onclick="saveRound()" style="margin-bottom: 12px; background: var(--success);">Save Round</button>
+            <button class="btn secondary" onclick="closeModal()">Cancel</button>
+            <button class="btn" style="background:none; color:#dc2626; margin-top:20px;" onclick="deleteRound()" id="btn-delete">Delete Round</button>
+        </div>
+    </div>
+
+    <script>
+        // --- DATA STATE ---
+        let players = []; // { id, name }
+        let rounds = [];  // [ { roundNum: 1, entries: { playerId: { bid: 2, got: 3 } } } ]
+        let editingIndex = -1; 
+        const TOTAL_ROUNDS = 13;
+
+        // --- HELPER: CARD COUNTER ---
+        function getCardsForRound(r) {
+            // Sequence: 1, 2, 3, 4, 5, 6, 7, 6, 5, 4, 3, 2, 1
+            if (r <= 7) return r;
+            return 14 - r;
+        }
+
+        // --- SETUP LOGIC ---
+        function handleEnter(e) { if(e.key === 'Enter') addPlayer(); }
+
+        function addPlayer() {
+            const input = document.getElementById('newPlayer');
+            const name = input.value.trim();
+            if(!name) return;
+            players.push({ id: Date.now() + Math.random(), name });
+            input.value = '';
+            input.focus();
+            renderPlayerList();
+        }
+
+        function renderPlayerList() {
+            document.getElementById('playerList').innerHTML = players.map(p => `• ${p.name}`).join('<br>');
+        }
+
+        function startGame() {
+            if(players.length === 0) return alert("Add players first");
+            document.getElementById('view-setup').classList.add('hidden');
+            document.getElementById('view-game').classList.remove('hidden');
+            recalculateAll();
+        }
+
+        // --- SCORING ENGINE ---
+        function recalculateAll() {
+            // 1. Reset transient scores
+            let scores = {}; // { playerId: { score: 0, bags: 0 } }
+            players.forEach(p => scores[p.id] = { score: 0, bags: 0 });
+
+            // 2. Replay every round
+            rounds.forEach((round) => {
+                players.forEach(p => {
+                    const entry = round.entries[p.id];
+                    if(!entry) return;
+
+                    const bid = parseInt(entry.bid);
+                    const got = parseInt(entry.got);
+                    let s = scores[p.id];
+
+                    // Logic: EXACT (10x + 10)
+                    if(bid === got) {
+                        s.score += (bid * 10) + 10;
+                    }
+                    // Logic: UNDER (-10x)
+                    else if(got < bid) {
+                        s.score -= (bid * 10);
+                    }
+                    // Logic: OVER (10x + diff + bag)
+                    else {
+                        const extra = got - bid;
+                        s.score += (bid * 10) + extra;
+                        s.bags += extra;
+                    }
+
+                    // Bag Penalty Check (-100 pts per 10 bags)
+                    while(s.bags >= 10) {
+                        s.score -= 100;
+                        s.bags -= 10;
+                    }
+                });
+            });
+
+            renderDashboard(scores);
+        }
+
+        // --- UI RENDERING ---
+        function renderDashboard(scores) {
+            // Determine Next Round info
+            const nextRoundNum = rounds.length + 1;
+            
+            // Update Headers
+            if(nextRoundNum > TOTAL_ROUNDS) {
+                document.getElementById('round-display').innerText = "Game Over";
+                document.getElementById('cards-display').innerText = "Final Scores";
+                document.getElementById('next-round-btn').classList.add('hidden');
+            } else {
+                document.getElementById('round-display').innerText = `Round ${nextRoundNum}`;
+                document.getElementById('cards-display').innerText = `Deal ${getCardsForRound(nextRoundNum)} Cards`;
+                document.getElementById('next-round-btn').innerText = `+ Enter Round ${nextRoundNum}`;
+                document.getElementById('next-round-btn').classList.remove('hidden');
+            }
+
+            // Sort Leaderboard
+            const sorted = [...players].sort((a,b) => scores[b.id].score - scores[a.id].score);
+            
+            document.getElementById('lb-body').innerHTML = sorted.map(p => {
+                const s = scores[p.id];
+                return `
+                    <tr>
+                        <td>${p.name}</td>
+                        <td style="text-align:right" class="score ${s.score < 0 ? 'neg':''}">${s.score}</td>
+                        <td style="text-align:right"><span class="bag-badge ${s.bags >= 7 ? 'danger':''}">${s.bags}</span></td>
+                    </tr>
+                `;
+            }).join('');
+
+            // Render History
+            const historyContainer = document.getElementById('history-list');
+            historyContainer.innerHTML = rounds.map((r, idx) => `
+                <div class="card" style="padding:10px;">
+                    <div style="display:flex; justify-content:space-between; margin-bottom:8px; border-bottom:1px solid #f1f5f9; padding-bottom:5px;">
+                        <span style="font-weight:bold; color:#2563eb;">Round ${r.roundNum} <span style="font-weight:normal; color:#94a3b8; font-size:0.9em;">(${getCardsForRound(r.roundNum)} cards)</span></span>
+                        <button class="edit-btn" onclick="editRound(${idx})">Edit</button>
+                    </div>
+                    <div style="display:grid; grid-template-columns: 1fr 1fr; gap: 5px;">
+                        ${players.map(p => {
+                            const e = r.entries[p.id];
+                            return `<div style="font-size:0.9em; color:#334155;">${p.name}: <b>${e.bid}/${e.got}</b></div>`;
+                        }).join('')}
+                    </div>
+                </div>
+            `).reverse().join(''); 
+        }
+
+        // --- MODAL / INPUT ---
+        function openModal() {
+            if(rounds.length >= TOTAL_ROUNDS) return;
+            editingIndex = -1;
+            const rNum = rounds.length + 1;
+            document.getElementById('modal-title').innerText = `Round ${rNum}`;
+            document.getElementById('modal-deal-info').innerText = `🃏 Deal ${getCardsForRound(rNum)} Cards`;
+            document.getElementById('btn-delete').classList.add('hidden');
+            renderModalInputs();
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function editRound(index) {
+            editingIndex = index;
+            const rNum = rounds[index].roundNum;
+            document.getElementById('modal-title').innerText = `Edit Round ${rNum}`;
+            document.getElementById('modal-deal-info').innerText = `🃏 Deal ${getCardsForRound(rNum)} Cards`;
+            document.getElementById('btn-delete').classList.remove('hidden');
+            renderModalInputs(rounds[index].entries);
+            document.getElementById('modal').classList.remove('hidden');
+        }
+
+        function renderModalInputs(existingEntries = null) {
+            const container = document.getElementById('modal-inputs');
+            container.innerHTML = players.map(p => {
+                const val = existingEntries ? existingEntries[p.id] : { bid: '', got: '' };
+                return `
+                <div class="input-grid">
+                    <label>${p.name}</label>
+                    <input type="number" id="bid_${p.id}" value="${val.bid}" placeholder="-" inputmode="decimal">
+                    <input type="number" id="got_${p.id}" value="${val.got}" placeholder="-" inputmode="decimal">
+                </div>
+                `;
+            }).join('');
+        }
+
+        function saveRound() {
+            let entries = {};
+            for(let p of players) {
+                const bid = document.getElementById(`bid_${p.id}`).value;
+                const got = document.getElementById(`got_${p.id}`).value;
+                if(bid === '' || got === '') return alert("Please fill all fields");
+                entries[p.id] = { bid, got };
+            }
+
+            if(editingIndex === -1) {
+                // New Round
+                rounds.push({
+                    roundNum: rounds.length + 1,
+                    entries: entries
+                });
+            } else {
+                // Update Existing
+                rounds[editingIndex].entries = entries;
+            }
+
+            closeModal();
+            recalculateAll();
+        }
+
+        function deleteRound() {
+            if(confirm("Delete this round completely?")) {
+                rounds.splice(editingIndex, 1);
+                // Fix round numbers
+                rounds.forEach((r, i) => r.roundNum = i + 1);
+                closeModal();
+                recalculateAll();
+            }
+        }
+
+        function closeModal() {
+            document.getElementById('modal').classList.add('hidden');
+        }
+    </script>
+</body>
+</html>
