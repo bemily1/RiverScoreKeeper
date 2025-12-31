@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>River Scorekeeper (1-7-1)</title>
+    <title>River Scorekeeper (Auto-Save)</title>
     <style>
         :root {
             --primary: #2563eb;
@@ -128,6 +128,8 @@
         </div>
         <div id="playerList" style="margin: 15px 0; color: #64748b; min-height: 20px;">No players yet</div>
         <button class="btn" onclick="startGame()">Start Game</button>
+        
+        <button id="resume-btn" class="btn secondary hidden" onclick="resumeGame()" style="margin-top:10px;">Resume Previous Game</button>
     </div>
 
     <div id="view-game" class="hidden">
@@ -153,7 +155,8 @@
         <h3 style="margin-top:20px; color:#64748b; font-size:1em;">Round History</h3>
         <div id="history-list" style="margin-bottom: 80px;"></div>
 
-        <div class="footer">
+        <div class="footer" style="display:flex; gap:10px;">
+            <button class="btn secondary" onclick="resetGame()" style="width: auto;">Reset</button>
             <button class="btn" id="next-round-btn" onclick="openModal()">+ Enter Round Results</button>
         </div>
     </div>
@@ -180,10 +183,48 @@
 
     <script>
         // --- DATA STATE ---
-        let players = []; // { id, name }
-        let rounds = [];  // [ { roundNum: 1, entries: { playerId: { bid: 2, got: 3 } } } ]
+        let players = []; 
+        let rounds = [];  
         let editingIndex = -1; 
         const TOTAL_ROUNDS = 13;
+        const SAVE_KEY = 'river_game_data_v1';
+
+        // --- INITIALIZATION ---
+        window.onload = function() {
+            // Check for saved game
+            const saved = localStorage.getItem(SAVE_KEY);
+            if(saved) {
+                try {
+                    const data = JSON.parse(saved);
+                    if(data.players && data.players.length > 0) {
+                        players = data.players;
+                        rounds = data.rounds;
+                        // Auto-start
+                        resumeGame();
+                    }
+                } catch(e) {
+                    console.error("Save file corrupted");
+                }
+            }
+        };
+
+        function persistData() {
+            const data = { players, rounds };
+            localStorage.setItem(SAVE_KEY, JSON.stringify(data));
+        }
+
+        function resumeGame() {
+            document.getElementById('view-setup').classList.add('hidden');
+            document.getElementById('view-game').classList.remove('hidden');
+            recalculateAll();
+        }
+
+        function resetGame() {
+            if(confirm("Are you sure? This will delete the current game.")) {
+                localStorage.removeItem(SAVE_KEY);
+                location.reload();
+            }
+        }
 
         // --- HELPER: CARD COUNTER ---
         function getCardsForRound(r) {
@@ -203,6 +244,7 @@
             input.value = '';
             input.focus();
             renderPlayerList();
+            persistData(); // Save on player add
         }
 
         function renderPlayerList() {
@@ -214,15 +256,14 @@
             document.getElementById('view-setup').classList.add('hidden');
             document.getElementById('view-game').classList.remove('hidden');
             recalculateAll();
+            persistData();
         }
 
         // --- SCORING ENGINE ---
         function recalculateAll() {
-            // 1. Reset transient scores
-            let scores = {}; // { playerId: { score: 0, bags: 0 } }
+            let scores = {}; 
             players.forEach(p => scores[p.id] = { score: 0, bags: 0 });
 
-            // 2. Replay every round
             rounds.forEach((round) => {
                 players.forEach(p => {
                     const entry = round.entries[p.id];
@@ -232,22 +273,16 @@
                     const got = parseInt(entry.got);
                     let s = scores[p.id];
 
-                    // Logic: EXACT (10x + 10)
                     if(bid === got) {
                         s.score += (bid * 10) + 10;
-                    }
-                    // Logic: UNDER (-10x)
-                    else if(got < bid) {
+                    } else if(got < bid) {
                         s.score -= (bid * 10);
-                    }
-                    // Logic: OVER (10x + diff + bag)
-                    else {
+                    } else {
                         const extra = got - bid;
                         s.score += (bid * 10) + extra;
                         s.bags += extra;
                     }
 
-                    // Bag Penalty Check (-100 pts per 10 bags)
                     while(s.bags >= 10) {
                         s.score -= 100;
                         s.bags -= 10;
@@ -260,10 +295,8 @@
 
         // --- UI RENDERING ---
         function renderDashboard(scores) {
-            // Determine Next Round info
             const nextRoundNum = rounds.length + 1;
             
-            // Update Headers
             if(nextRoundNum > TOTAL_ROUNDS) {
                 document.getElementById('round-display').innerText = "Game Over";
                 document.getElementById('cards-display').innerText = "Final Scores";
@@ -275,7 +308,6 @@
                 document.getElementById('next-round-btn').classList.remove('hidden');
             }
 
-            // Sort Leaderboard
             const sorted = [...players].sort((a,b) => scores[b.id].score - scores[a.id].score);
             
             document.getElementById('lb-body').innerHTML = sorted.map(p => {
@@ -289,7 +321,6 @@
                 `;
             }).join('');
 
-            // Render History
             const historyContainer = document.getElementById('history-list');
             historyContainer.innerHTML = rounds.map((r, idx) => `
                 <div class="card" style="padding:10px;">
@@ -353,27 +384,23 @@
             }
 
             if(editingIndex === -1) {
-                // New Round
-                rounds.push({
-                    roundNum: rounds.length + 1,
-                    entries: entries
-                });
+                rounds.push({ roundNum: rounds.length + 1, entries: entries });
             } else {
-                // Update Existing
                 rounds[editingIndex].entries = entries;
             }
 
             closeModal();
             recalculateAll();
+            persistData(); // Save on round update
         }
 
         function deleteRound() {
             if(confirm("Delete this round completely?")) {
                 rounds.splice(editingIndex, 1);
-                // Fix round numbers
                 rounds.forEach((r, i) => r.roundNum = i + 1);
                 closeModal();
                 recalculateAll();
+                persistData(); // Save on delete
             }
         }
 
